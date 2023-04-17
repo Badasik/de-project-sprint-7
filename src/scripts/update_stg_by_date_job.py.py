@@ -24,6 +24,13 @@ citygeodata_csv = f"{hdfs_path}/user/{sname}/data/citygeodata/geo.csv"
 start_date = sys.argv[4] 
 depth = sys.argv[5] 
 
+spark = (
+                SparkSession
+                .builder
+                .master('yarn')
+                .appName(f"{sname}_initial_load")
+                .getOrCreate()
+            )
 
 #Функция расчета партиционорования данных за день и сохранения в STG слой
 

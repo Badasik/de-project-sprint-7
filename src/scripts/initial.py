@@ -19,7 +19,7 @@ def main():
     sname = sys.argv[1] #"antonbadas" 
     hdfs_path = sys.argv[2] #"hdfs://rc1a-dataproc-m-dg5lgqqm7jju58f9.mdb.yandexcloud.net:8020"
     geo_path = sys.argv[3]  #"/user/master/data/geo/events/"
-    citygeodata_csv = f"{hdfs_path}/user/{sname}/data/citygeodata/"
+    
 
     spark = (
                 SparkSession

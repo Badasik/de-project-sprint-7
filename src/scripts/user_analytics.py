@@ -18,6 +18,15 @@ from pyspark.sql.window import Window
 from pyspark.sql.types import *
 from math import radians, cos, sin, asin, sqrt
 
+sname = sys.argv[1] #"antonbadas" 
+hdfs_path = sys.argv[2] #"hdfs://rc1a-dataproc-m-dg5lgqqm7jju58f9.mdb.yandexcloud.net:8020"
+geo_path = sys.argv[3]  #"/user/master/data/geo/events/"
+citygeodata_csv = f"{hdfs_path}/user/{sname}/data/citygeodata/"
+start_date = sys.argv[4]
+depth = sys.argv[5]
+
+
+
 def input_paths(start_date, depth):
     '''Функция формирует список директорий для загрузки с заданной глубиной'''
     list_date = []
@@ -90,9 +99,9 @@ def main():
     #Промежуточный df для дальнейших вычислений
     df_change = (df_message_and_distance.withColumn('max_date',F.max('date')
         .over(Window().partitionBy('user_id')))
-        .withColumn('city_name_lag_1_desc',F.lag('city_name',-1,'start')
+        .withColumn('city_name_lead_desc',F.lead('city_name',)
         .over(Window().partitionBy('user_id').orderBy(F.col('date').desc())))
-        .filter(F.col('city_name') != F.col('city_name_lag_1_desc')))
+        .filter(F.col('city_name') != F.col('city_name_lead_desc')))
     
     #Показатель home_city
     df_home_city = (df_change.withColumn('date_lag',F.coalesce(F.lag('date')
@@ -102,7 +111,7 @@ def main():
         .withColumn('row',F.row_number()
         .over(Window.partitionBy("user_id").orderBy(F.col("date").desc())))
         .filter(F.col('row') == 1)
-        .drop('date','city_name_lag_1_desc','date_lag','row','date_diff','max_date'))
+        .drop('date','city_name_lead_desc','date_lag','row','date_diff','max_date'))
     
     #Количество посещенных городов по пользователям
     df_travel_count = (df_change.groupBy("user_id").count().withColumnRenamed("count", "travel_count"))

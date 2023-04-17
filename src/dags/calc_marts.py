@@ -66,7 +66,7 @@ with DAG(
 
     calculating_geo_analitics_task = SparkSubmitOperator(
         task_id='calculating_geo_analitics_job',
-        application ='/scripts/_geo_analitics.py' ,
+        application ='/scripts/geo_analytics.py',
         conn_id= 'yarn_spark',
         application_args = [sname, hdfs_path, geo_path, start_date, depth],
         conf={

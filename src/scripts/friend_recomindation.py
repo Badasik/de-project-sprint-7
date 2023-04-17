@@ -18,19 +18,26 @@ os.environ['JAVA_HOME']='/usr'
 os.environ['SPARK_HOME'] ='/usr/lib/spark'
 os.environ['PYTHONPATH'] ='/usr/local/lib/python3.8'
 
+
+sname = sys.argv[1] #"antonbadas" 
+hdfs_path = sys.argv[2] #"hdfs://rc1a-dataproc-m-dg5lgqqm7jju58f9.mdb.yandexcloud.net:8020"
+geo_path = sys.argv[3]  #"/user/master/data/geo/events/"
+citygeodata_csv = f"{hdfs_path}/user/{sname}/data/citygeodata/"
+start_date = sys.argv[4]
+depth = sys.argv[5]
+
 def main():
     spark = (
             SparkSession
             .builder
             .master('yarn')
-            .appName(f"{sname}_calculating_friend_recomendation_{date}")
+            .appName(f"{sname}_calculating_friend_recomendation_{start_date}")
             .getOrCreate()
         )
     
 
     #Получаем все подписки и удаляем дубликаты
     df_all_subscriptions = (spark.read.parquet(*input_paths(start_date, depth))
-        .filter("event_type == 'subscription'")
         .where((F.col('event.subscription_channel').isNotNull() & F.col('event.user').isNotNull()))
         .select(F.col('event.subscription_channel').alias('channel_id'),F.col('event.user').alias('user_id')).
         distinct())
@@ -121,15 +128,14 @@ def main():
     df_csv = spark.read.csv(citygeodata_csv, sep = ';', header = True)
     df_csv = df_csv.withColumn("lat",regexp_replace("lat", ",", ".")).withColumn("lng",regexp_replace("lng",",","."))
 
-    #Оставлю только два крупных города (так как действительно вы писали что мое решение будет падать, но и в вашем готовым решении он не нашел часть городов из файла)
-    df_citygeodata = df_citygeodata.filter(F.col('city_id')<3)
+    
 
     #Изменим тип и название столбцов
     df_citygeodata = (df_citygeodata.select(F.col("id")
         .cast(LongType()).alias("city_id"),(F.col("city")).alias("city_name"),(F.col("lat")).cast(DoubleType())
         .alias("city_lat"),(F.col("lng")).cast(DoubleType()).alias("city_lon")))
 
-    #Перемножаем на координаты городов df_user_city (так как растояние 1 км между пользователями значит они находятся в одном городе и множно брать координаты одного человека для вычисления zone_id)
+    #Перемножаем на координаты городов df_user_city (так как растояние 1 км между пользователями значит они находятся в одном городе и можно брать координаты одного человека для вычисления zone_id)
     #Считаем расстояние до города df_distance_city для вычисления zone_id фильтруем чтобы получить только один город для связки user_left; user_right
     df_user_city = (df_distance.crossJoin(df_citygeodata.hint("broadcast"))\
         .withColumn("distance", udf_get_distance(F.col("lon"), F.col("lat"), F.col("city_lon"), F.col("city_lat"))
@@ -141,12 +147,30 @@ def main():
         .withColumnRenamed("city_id", "zone_id")
         .distinct())
 
+    #Функция для определения timezone
+    def time_zone(city):
+        if city in ('Sydney', 'Melbourne', 'Hobart', 'Canberra', 'Maitland', 'Cranbourne', 'Launceston', 'Newcastle', 'Bendigo', 'Wollongong', 'Geelong', 'Hobart'):
+            city_zone = 'UTC+11:00'
+        elif city in ('Adelaide'):
+            city_zone = 'UTC+10:30'
+        elif city in ('Brisbane', 'Gold Coast', 'Townsville', 'Ipswich', 'Cairns', 'Toowoomba', 'Ballarat', 'Mackay', 'Rockhampton'):
+            city_zone = 'UTC+10:00'
+        elif city in ('Darwin'):
+            city_zone = 'UTC+9:30'
+        elif city in ('Bunbury', 'Perth'):
+            city_zone = 'UTC+8:00'
+        else:
+            city_zone = 'UTC+9:00'
+        return city_zone
+
+    timezone = F.udf(time_zone)
+
     #Формируем витрину
     df_friend_recomendation_analitics_mart = (df_user_city
         .withColumn("processed_dttm" , F.current_date())
-        .withColumn("timezone", F.concat(F.lit("Australia/"), F.col('city_name')))
-        .withColumn("local_time", F.from_utc_timestamp(F.col("processed_dttm"),F.col('timezone')))
-        .drop("timezone", "city_name"))
+        .withColumn("utc", timezone(F.col('city_name')))
+        .withColumn("local_time", F.from_utc_timestamp(F.col("processed_dttm"),F.col('utc')))
+        .drop("utc", "city_name"))
 
     #comment: Сохранение витрины для аналитиков на hdfs 
     (df_friend_recomendation_analitics_mart.write

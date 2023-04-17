@@ -18,6 +18,13 @@ os.environ['JAVA_HOME'] = '/usr'
 os.environ['SPARK_HOME'] = '/usr/lib/spark'
 os.environ['PYTHONPATH'] = '/usr/local/lib/python3.8'
 
+sname = sys.argv[1] #"antonbadas" 
+hdfs_path = sys.argv[2] #"hdfs://rc1a-dataproc-m-dg5lgqqm7jju58f9.mdb.yandexcloud.net:8020"
+geo_path = sys.argv[3]  #"/user/master/data/geo/events/"
+citygeodata_csv = f"{hdfs_path}/user/{sname}/data/citygeodata/"
+start_date = sys.argv[4]
+depth = sys.argv[5]
+
 def main():
     spark = (
             SparkSession
@@ -208,9 +215,9 @@ def main():
     #df_count_reaction
     #df_count_subscription
     df_geo_analitics_mart = (
-        df_count_message.join(df_count_reg, ['zone_id','week','month'],how = 'left')
-        .join(df_count_reaction, ['zone_id','week','month'], how='left')
-        .join(df_count_subscription, ['zone_id','week','month'], how='left')
+        df_count_message.join(df_count_reg, ['zone_id','week','month'],how = 'inner')
+        .join(df_count_reaction, ['zone_id','week','month'], how='inner')
+        .join(df_count_subscription, ['zone_id','week','month'], how='inner')
     )
 
     #Сохранение витрины для аналитиков на hdfs 

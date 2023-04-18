@@ -85,20 +85,29 @@ def main():
     #Получаем все подписки и удаляем дубликаты
     df_events_messages = (spark.read.parquet(*input_paths(start_date, depth))
         .filter("event_type == 'message'")
-        .where( F.col("lat").isNotNull() | (F.col("lon").isNotNull()))
-        .select(F.col('event.message_from')
-        .alias('user_id'),F.col("lat").alias('lat'),F.col("lon").alias('lon'))
+        .where( F.col("lat").isNotNull() | (F.col("lon").isNotNull()) | (unix_timestamp(F.col('event.datetime'),'yyyy-MM-dd HH:mm:ss').isNotNull()))
+        .select(F.col('event.message_from') 
+        .alias('user_id'),F.col("lat").alias('lat'),F.col("lon").alias('lon'),unix_timestamp(F.col('event.datetime'),'yyyy-MM-dd HH:mm:ss').alias('time')) 
         .distinct())
+    
+    w = Window.partitionBy('user_id')
+    df_events_messages = df_events_messages.withColumn('maxdatetime', F.max('time').over(w))\
+    .where(F.col('time') == F.col('maxdatetime'))\
+    .drop('maxdatetime')
 
 
     #Получение подписок и координат с округлением до двух знаков в дробной части
     df_events_subscription = (spark.read.parquet(*input_paths(start_date, depth))
         .filter("event_type == 'subscription'")
-        .where( F.col("lat").isNotNull() | (F.col("lon").isNotNull()))
-        .select(F.col("event.user")
-        .alias('user_id'),F.col("lat").alias('lat'),F.col("lon").alias('lon'))
+        .where( F.col("lat").isNotNull() | (F.col("lon").isNotNull()) | (unix_timestamp(F.col('event.datetime'),'yyyy-MM-dd HH:mm:ss').isNotNull()))
+        .select(F.col('event.message_from') 
+        .alias('user_id'),F.col("lat").alias('lat'),F.col("lon").alias('lon'),unix_timestamp(F.col('event.datetime'),'yyyy-MM-dd HH:mm:ss').alias('time')) 
         .distinct())
 
+    df_events_subscription = df_events_subscription.withColumn('maxdatetime', F.max('time').over(w))\
+    .where(F.col('time') == F.col('maxdatetime'))\
+    .drop('maxdatetime')
+    
     #объединение координат сообщений и подписок
     df_events_coordinats = (df_events_subscription.union(df_events_messages).distinct())
 
